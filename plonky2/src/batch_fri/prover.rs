@@ -5,14 +5,14 @@ use plonky2_field::extension::flatten;
 #[allow(unused_imports)]
 use plonky2_field::types::Field;
 use plonky2_maybe_rayon::*;
-use plonky2_util::reverse_index_bits_in_place;
+use plonky2_util::{log2_strict, reverse_index_bits_in_place};
 
 use crate::field::extension::{unflatten, Extendable};
 use crate::field::polynomial::{PolynomialCoeffs, PolynomialValues};
 use crate::fri::proof::{FriInitialTreeProof, FriProof, FriQueryRound, FriQueryStep};
 use crate::fri::prover::{fri_proof_of_work, FriCommitedTrees};
 use crate::fri::FriParams;
-use crate::hash::field_merkle_tree::FieldMerkleTree;
+use crate::hash::batch_merkle_tree::BatchMerkleTree;
 use crate::hash::hash_types::RichField;
 use crate::hash::merkle_tree::MerkleTree;
 use crate::iop::challenger::Challenger;
@@ -23,7 +23,7 @@ use crate::util::timing::TimingTree;
 
 /// Builds a batch FRI proof.
 pub fn batch_fri_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>(
-    initial_merkle_trees: &[&FieldMerkleTree<F, C::Hasher>],
+    initial_merkle_trees: &[&BatchMerkleTree<F, C::Hasher>],
     lde_polynomial_coeffs: PolynomialCoeffs<F::Extension>,
     lde_polynomial_values: &[PolynomialValues<F::Extension>],
     challenger: &mut Challenger<F, C::Hasher>,
@@ -36,6 +36,18 @@ pub fn batch_fri_proof<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>,
     assert!(lde_polynomial_values
         .windows(2)
         .all(|pair| { pair[0].len() > pair[1].len() }));
+    // Check that reduction_arity_bits covers all polynomials
+    let mut cur_n = log2_strict(n);
+    let mut cur_poly_index = 1;
+    for arity_bits in &fri_params.reduction_arity_bits {
+        cur_n -= arity_bits;
+        if cur_poly_index < lde_polynomial_values.len()
+            && cur_n == log2_strict(lde_polynomial_values[cur_poly_index].len())
+        {
+            cur_poly_index += 1;
+        }
+    }
+    assert_eq!(cur_poly_index, lde_polynomial_values.len());
 
     // Commit phase
     let (trees, final_coeffs) = timed!(
@@ -139,7 +151,7 @@ fn batch_fri_prover_query_rounds<
     C: GenericConfig<D, F = F>,
     const D: usize,
 >(
-    initial_merkle_trees: &[&FieldMerkleTree<F, C::Hasher>],
+    initial_merkle_trees: &[&BatchMerkleTree<F, C::Hasher>],
     trees: &[MerkleTree<F, C::Hasher>],
     challenger: &mut Challenger<F, C::Hasher>,
     n: usize,
@@ -165,7 +177,7 @@ fn batch_fri_prover_query_round<
     C: GenericConfig<D, F = F>,
     const D: usize,
 >(
-    initial_merkle_trees: &[&FieldMerkleTree<F, C::Hasher>],
+    initial_merkle_trees: &[&BatchMerkleTree<F, C::Hasher>],
     trees: &[MerkleTree<F, C::Hasher>],
     mut x_index: usize,
     fri_params: &FriParams,
@@ -215,8 +227,8 @@ mod tests {
     use plonky2_field::types::{Field64, Sample};
 
     use super::*;
-    use crate::fri::batch_oracle::BatchFriOracle;
-    use crate::fri::batch_verifier::verify_batch_fri_proof;
+    use crate::batch_fri::oracle::BatchFriOracle;
+    use crate::batch_fri::verifier::verify_batch_fri_proof;
     use crate::fri::reduction_strategies::FriReductionStrategy;
     use crate::fri::structure::{
         FriBatchInfo, FriInstanceInfo, FriOpeningBatch, FriOpenings, FriOracleInfo,
@@ -263,7 +275,7 @@ mod tests {
         );
         let poly = &polynomial_batch.polynomials[0];
         let mut challenger = Challenger::<F, H>::new();
-        challenger.observe_cap(&polynomial_batch.field_merkle_tree.cap);
+        challenger.observe_cap(&polynomial_batch.batch_merkle_tree.cap);
         let _alphas = challenger.get_n_challenges(2);
         let zeta = challenger.get_extension_challenge::<D>();
         challenger.observe_extension_element::<D>(&poly.to_extension::<D>().eval(zeta));
@@ -292,7 +304,7 @@ mod tests {
         let lde_final_values = lde_final_poly.coset_fft(F::coset_shift().into());
 
         let proof = batch_fri_proof::<F, C, D>(
-            &[&polynomial_batch.field_merkle_tree],
+            &[&polynomial_batch.batch_merkle_tree],
             lde_final_poly,
             &[lde_final_values],
             &mut challenger,
@@ -318,7 +330,7 @@ mod tests {
                 batches: vec![fri_opening_batch],
             }],
             &fri_challenges,
-            &[polynomial_batch.field_merkle_tree.cap],
+            &[polynomial_batch.batch_merkle_tree.cap],
             &proof,
             &fri_params,
         )
@@ -362,7 +374,7 @@ mod tests {
         );
 
         let mut challenger = Challenger::<F, H>::new();
-        challenger.observe_cap(&trace_oracle.field_merkle_tree.cap);
+        challenger.observe_cap(&trace_oracle.batch_merkle_tree.cap);
         let _alphas = challenger.get_n_challenges(2);
         let zeta = challenger.get_extension_challenge::<D>();
         let poly0 = &trace_oracle.polynomials[0];
@@ -394,7 +406,7 @@ mod tests {
         let lde_final_values_2 = lde_final_poly_2.coset_fft(F::coset_shift().into());
 
         let proof = batch_fri_proof::<F, C, D>(
-            &[&trace_oracle.field_merkle_tree],
+            &[&trace_oracle.batch_merkle_tree],
             lde_final_poly_0,
             &[lde_final_values_0, lde_final_values_1, lde_final_values_2],
             &mut challenger,
@@ -455,7 +467,7 @@ mod tests {
             &fri_instances,
             &fri_openings,
             &fri_challenges,
-            &[trace_oracle.field_merkle_tree.cap],
+            &[trace_oracle.batch_merkle_tree.cap],
             &proof,
             &fri_params,
         )

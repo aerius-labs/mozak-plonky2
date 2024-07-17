@@ -14,7 +14,7 @@ use crate::fri::verifier::{
 };
 use crate::fri::FriParams;
 use crate::hash::hash_types::RichField;
-use crate::hash::merkle_proofs::{verify_field_merkle_proof_to_cap, verify_merkle_proof_to_cap};
+use crate::hash::merkle_proofs::{verify_batch_merkle_proof_to_cap, verify_merkle_proof_to_cap};
 use crate::hash::merkle_tree::MerkleCap;
 use crate::plonk::config::{GenericConfig, Hasher};
 use crate::util::reducing::ReducingFactor;
@@ -45,7 +45,7 @@ pub fn verify_batch_fri_proof<
     );
 
     let mut precomputed_reduced_evals = Vec::with_capacity(openings.len());
-    for opn in openings.iter() {
+    for opn in openings {
         let pre = PrecomputedReducedOpenings::from_os_and_alpha(opn, challenges.fri_alpha);
         precomputed_reduced_evals.push(pre);
     }
@@ -99,7 +99,7 @@ fn batch_fri_verify_initial_proof<F: RichField + Extendable<D>, H: Hasher<F>, co
             })
             .collect::<Vec<_>>();
 
-        verify_field_merkle_proof_to_cap::<F, H>(&leaves, degree_bits, x_index, cap, merkle_proof)?;
+        verify_batch_merkle_proof_to_cap::<F, H>(&leaves, degree_bits, x_index, cap, merkle_proof)?;
     }
 
     Ok(())

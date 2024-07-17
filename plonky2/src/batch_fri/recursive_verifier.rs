@@ -55,7 +55,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         );
 
         let mut precomputed_reduced_evals = Vec::with_capacity(openings.len());
-        for opn in openings.iter() {
+        for opn in openings {
             let pre = with_context!(
                 self,
                 "precompute reduced evaluations",
@@ -132,7 +132,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             with_context!(
                 self,
                 &format!("verify {i}'th initial Merkle proof"),
-                self.verify_field_merkle_proof_to_cap_with_cap_index::<H>(
+                self.verify_batch_merkle_proof_to_cap_with_cap_index::<H>(
                     &leaves,
                     degree_bits,
                     x_index_bits,
