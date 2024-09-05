@@ -672,6 +672,22 @@ pub(crate) fn eval_helper_columns<F, FE, P, const D: usize, const D2: usize>(
             .zip(filter.chunks(chunk_size).zip(helper_columns))
         {
             match chunk.len() {
+                3 => {
+                    let combin0 = challenges.combine(&chunk[0]);
+                    let combin1 = challenges.combine(chunk[1].iter());
+                    let combin2 = challenges.combine(chunk[2].iter());
+
+                    let f0 = fs[0].eval_filter(local_values, next_values);
+                    let f1 = fs[1].eval_filter(local_values, next_values);
+                    let f2 = fs[2].eval_filter(local_values, next_values);
+
+                    consumer.constraint(
+                        combin0 * combin1 * combin2 * h
+                            - f0 * combin1 * combin2
+                            - f1 * combin0 * combin2
+                            - f2 * combin0 * combin1,
+                    );
+                }
                 2 => {
                     let combin0 = challenges.combine(&chunk[0]);
                     let combin1 = challenges.combine(chunk[1].iter());
@@ -713,6 +729,30 @@ pub(crate) fn eval_helper_columns_circuit<F: RichField + Extendable<D>, const D:
             .zip(filter.chunks(chunk_size).zip(helper_columns))
         {
             match chunk.len() {
+                3 => {
+                    // c0 * c1 * c2 * h - f0 * c1 * c2 = f1 * c0 * c2 + f2 * c0 * c1
+                    let combin0 = challenges.combine_circuit(builder, &chunk[0]);
+                    let combin1 = challenges.combine_circuit(builder, &chunk[1]);
+                    let combin2 = challenges.combine_circuit(builder, &chunk[2]);
+
+                    let f0 = fs[0].eval_filter_circuit(builder, local_values, next_values);
+                    let f1 = fs[1].eval_filter_circuit(builder, local_values, next_values);
+                    let f2 = fs[2].eval_filter_circuit(builder, local_values, next_values);
+
+                    let c_01 = builder.mul_extension(combin0, combin1);
+                    let c_02 = builder.mul_extension(combin0, combin2);
+                    let c_12 = builder.mul_extension(combin1, combin2);
+
+                    let lhs = builder.mul_sub_extension(combin0, h, f0);
+                    let lhs = builder.mul_extension(lhs, c_12);
+
+                    let f1_c_02 = builder.mul_extension(f1, c_02);
+                    let rhs = builder.mul_add_extension(f2, c_01, f1_c_02);
+
+                    let constr = builder.sub_extension(lhs, rhs);
+
+                    consumer.constraint(builder, constr);
+                }
                 2 => {
                     let combin0 = challenges.combine_circuit(builder, &chunk[0]);
                     let combin1 = challenges.combine_circuit(builder, &chunk[1]);
