@@ -749,6 +749,7 @@ pub(crate) fn eval_helper_columns_circuit<F: RichField + Extendable<D>, const D:
         {
             match chunk.len() {
                 4 => {
+                    // c0 * c1 * c2 * c4 * h - f0 * c1 * c2 * c3 = f1 * c0 * c2 *c3 + f2 * c0 * c1 * c3 + f3 * c0 * c1 * c2
                     let combin0 = challenges.combine_circuit(builder, &chunk[0]);
                     let combin1 = challenges.combine_circuit(builder, &chunk[1]);
                     let combin2 = challenges.combine_circuit(builder, &chunk[2]);
@@ -768,10 +769,10 @@ pub(crate) fn eval_helper_columns_circuit<F: RichField + Extendable<D>, const D:
                     let c_023 = builder.mul_extension(c_23, combin0);
                     let f1_c_023 = builder.mul_extension(f1, c_023);
 
-                    let c_013 = builder.mul_extension(c01, c3);
-                    let f1c_add_f2c = builder.mul_add__extension(f2, c_013, f1_c_023);
+                    let c_013 = builder.mul_extension(c_01, combin3);
+                    let f1c_add_f2c = builder.mul_add_extension(f2, c_013, f1_c_023);
 
-                    let c_012 = builder.mul_extension(c_01, c2);
+                    let c_012 = builder.mul_extension(c_01, combin2);
                     let rhs = builder.mul_add_extension(f3, c_012, f1c_add_f2c);
                     let constr = builder.sub_extension(lhs, rhs);
 
